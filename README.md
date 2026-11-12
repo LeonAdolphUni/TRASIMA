@@ -89,7 +89,7 @@ Jeweils zwei Terminals: zuerst der Server, dann die V2s.
 
 # Karte (Aufgabe 11): REST-Server mit Karte auf Port 8083
 ./run.sh maps
-./run.sh rest-cars 3 V2- http://localhost:8083/api
+./run.sh rest-cars 3 Leons-Auto- http://localhost:8083/api
 ```
 
 ## Aufgabe 11: Kartenanwendung
@@ -135,11 +135,15 @@ Der REST-Client meldet ein V2 zuerst mit POST an, danach mit PUT und löscht es 
 ### Fahrzeuge auf dem Kursserver testen
 
 Die Karte des Dozenten liegt unter http://[2001:7c0:1b20:c913:1::51d]:8080/trasima (nur per VPN).
-Eigene V2s dorthin schicken, mit einem eigenen Id-Präfix, damit es keine Kollision mit anderen gibt:
+Eigene V2s dorthin schicken:
 
 ```bash
-./run.sh rest-cars 3 Leon- 'http://[2001:7c0:1b20:c913:1::51d]:8080/trasima/api'
+./run.sh rest-cars 3 Leons-Auto- 'http://[2001:7c0:1b20:c913:1::51d]:8080/trasima/api'
 ```
+
+Die REST-Schnittstelle kennt nur `id`, `lat`, `lon`, `speed` und `dir`. Damit man auf jeder Karte
+sieht, wem ein Fahrzeug gehört, steckt der Besitzer in der Id: `Leons-Auto-1`, `Leons-Auto-2`, …
+Das ist auch der Standard, wenn man den Präfix weglässt (`-Dtrasima.owner=Name` ändert ihn).
 
 Die Basis-URL endet vor `/trasima/vehicles`. Liegt die Schnittstelle auf dem Kursserver
 woanders, nur diese URL anpassen.

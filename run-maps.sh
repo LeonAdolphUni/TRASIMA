@@ -30,7 +30,7 @@ echo
 echo "Karte:  http://localhost:$port/"
 echo
 
-./run.sh rest-cars "$@" "$count" V2- "http://localhost:$port/api"
+./run.sh rest-cars "$@" "$count" Leons-Auto- "http://localhost:$port/api"
 
 echo
 echo "Alle V2s sind am Ziel. Die Karte bleibt erreichbar, bis du Strg+C drueckst."

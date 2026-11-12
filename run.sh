@@ -22,7 +22,7 @@ Aufruf: ./run.sh <programm> [-Dname=wert ...] [argumente ...]
   grpc-cars [anzahl] [praefix] [host] [port]      V2s melden per gRPC
   web [http-port] [grpc-host] [grpc-port]         Aufgabe 08: Webseite (Standard-Port 8081)
   rest-server [port]                              Aufgabe 10: REST-Server (Standard-Port 8082)
-  rest-cars [anzahl] [praefix] [basis-url]        V2s melden per REST
+  rest-cars [anzahl] [praefix] [basis-url]        V2s melden per REST (Ids: Leons-Auto-1, Leons-Auto-2, ...)
   maps [port]                                     Aufgabe 11: REST-Server mit OpenStreetMap-Karte (Standard-Port 8083)
 
 Einstellungen der V2s:
