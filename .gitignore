@@ -1,0 +1,12 @@
+# Maven
+target/
+# IDEs
+.idea/
+*.iml
+.vscode/
+.classpath
+.project
+.settings/
+# System
+.DS_Store
+*.log

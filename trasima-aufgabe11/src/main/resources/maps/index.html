@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TRASIMA Karte</title>
+<!-- Aufgabe 11: Fahrzeuge vom TRASIMA-REST-Server auf einer OpenStreetMap-Karte (Leaflet) -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+      integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="">
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+        integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+<style>
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; font-family: system-ui, sans-serif; color: #1d2733; }
+  body { display: flex; flex-direction: column; }
+  header { padding: 8px 14px; background: #1f4e79; color: #fff; display: flex; gap: 16px;
+           align-items: baseline; flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0; }
+  header span { font-size: 13px; opacity: .85; }
+  #status { padding: 6px 14px; font-size: 14px; background: #e8f1e8; color: #1e5b1e; }
+  #status.error { background: #fbe3e3; color: #8a1c1c; font-weight: 600; }
+  main { flex: 1; display: flex; min-height: 0; }
+  #map { flex: 1; min-height: 300px; }
+  aside { width: 270px; overflow-y: auto; border-left: 1px solid #ccd5df; background: #f6f8fa; }
+  aside h2 { font-size: 14px; margin: 10px 12px 6px; }
+  #list { list-style: none; margin: 0; padding: 0; }
+  #list li { padding: 7px 12px; border-top: 1px solid #e1e6eb; cursor: pointer; font-size: 13px; }
+  #list li:hover, #list li.selected { background: #dce8f5; }
+  #list b { display: block; font-size: 14px; }
+  #empty { padding: 7px 12px; font-size: 13px; color: #5a6672; }
+  .car-icon svg { overflow: visible; }
+  .popup td { padding: 1px 6px 1px 0; font-size: 13px; }
+  @media (max-width: 700px) { main { flex-direction: column; } aside { width: auto; height: 35%;
+           border-left: 0; border-top: 1px solid #ccd5df; } }
+</style>
+</head>
+<body>
+<header>
+  <h1>TRASIMA – Fahrzeuge in Mannheim</h1>
+  <span id="info"></span>
+</header>
+<div id="status">Lade Fahrzeuge …</div>
+<main>
+  <div id="map"></div>
+  <aside>
+    <h2>Fahrzeuge (<span id="count">0</span>)</h2>
+    <ul id="list"></ul>
+    <div id="empty">Noch keine Fahrzeuge gemeldet.</div>
+  </aside>
+</main>
+
+<script>
+'use strict';
+
+// ---- Einstellungen (ueberschreibbar per URL: ?api=...&interval=5) ----
+const params = new URLSearchParams(location.search);
+const API_URL = params.get('api')
+    || (location.protocol.startsWith('http') ? '/api/trasima/vehicles'
+                                             : 'http://localhost:8083/api/trasima/vehicles');
+const INTERVAL_MS = (Number(params.get('interval')) || 5) * 1000;
+const TIMEOUT_MS = 4000;
+
+document.getElementById('info').textContent =
+    'Quelle: ' + API_URL + ' · Aktualisierung alle ' + INTERVAL_MS / 1000 + ' s';
+
+// ---- 1. Karte anzeigen (Mannheim) ----
+const map = L.map('map').setView([49.487, 8.466], 13);
+L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>-Mitwirkende'
+}).addTo(map);
+
+// id -> { marker, data }
+const vehicles = new Map();
+let selectedId = null;
+
+// Pfeil-Symbol, das in Fahrtrichtung zeigt (dir in Grad, 0 = Norden, im Uhrzeigersinn)
+function carIcon(v) {
+  const color = v.speed > 0 ? '#1f6fd1' : '#8a95a1';
+  return L.divIcon({
+    className: 'car-icon',
+    iconSize: [26, 26],
+    iconAnchor: [13, 13],
+    popupAnchor: [0, -12],
+    html: '<svg width="26" height="26" viewBox="-13 -13 26 26">'
+        + '<g transform="rotate(' + (Number(v.dir) || 0) + ')">'
+        + '<circle r="11" fill="#fff" stroke="' + color + '" stroke-width="2"/>'
+        + '<path d="M0,-8 L6,6 L0,3 L-6,6 Z" fill="' + color + '"/></g></svg>'
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+}
+
+function fmt(n, digits) { return Number(n).toFixed(digits); }
+
+// ---- 4. Fahrzeugdetails im Popup ----
+function popupHtml(v) {
+  return '<table class="popup">'
+      + '<tr><td><b>ID</b></td><td>' + escapeHtml(v.id) + '</td></tr>'
+      + '<tr><td>Geschwindigkeit</td><td>' + fmt(v.speed, 1) + ' km/h</td></tr>'
+      + '<tr><td>Richtung</td><td>' + fmt(v.dir, 1) + '°</td></tr>'
+      + '<tr><td>Breitengrad (lat)</td><td>' + fmt(v.lat, 5) + '</td></tr>'
+      + '<tr><td>Längengrad (lon)</td><td>' + fmt(v.lon, 5) + '</td></tr>'
+      + (v.timestamp ? '<tr><td>Stand</td><td>' + new Date(v.timestamp).toLocaleTimeString('de-DE') + '</td></tr>' : '')
+      + '</table>';
+}
+
+function isValid(v) {
+  return v && v.id != null && Number.isFinite(Number(v.lat)) && Number.isFinite(Number(v.lon));
+}
+
+// ---- 3. Marker abgleichen: verschieben, neu anlegen, entfernen ----
+function updateMarkers(list) {
+  const seen = new Set();
+  for (const v of list.filter(isValid)) {
+    const id = String(v.id);
+    seen.add(id);
+    const pos = [Number(v.lat), Number(v.lon)];
+    const entry = vehicles.get(id);
+    if (entry) {                       // bekanntes Fahrzeug: Marker verschieben
+      entry.marker.setLatLng(pos);
+      entry.marker.setIcon(carIcon(v));
+      entry.marker.setPopupContent(popupHtml(v));
+      entry.data = v;
+    } else {                           // neues Fahrzeug: neuer Marker
+      const marker = L.marker(pos, { icon: carIcon(v), title: id })
+          .bindPopup(popupHtml(v))
+          .on('click', () => select(id))
+          .addTo(map);
+      vehicles.set(id, { marker, data: v });
+    }
+  }
+  for (const [id, entry] of vehicles) { // nicht mehr gemeldet: Marker entfernen
+    if (!seen.has(id)) {
+      map.removeLayer(entry.marker);
+      vehicles.delete(id);
+      if (selectedId === id) selectedId = null;
+    }
+  }
+  renderList();
+}
+
+function renderList() {
+  const ul = document.getElementById('list');
+  ul.innerHTML = '';
+  const ids = [...vehicles.keys()].sort((a, b) => a.localeCompare(b, 'de', { numeric: true }));
+  for (const id of ids) {
+    const v = vehicles.get(id).data;
+    const li = document.createElement('li');
+    if (id === selectedId) li.className = 'selected';
+    li.innerHTML = '<b>' + escapeHtml(id) + '</b>' + fmt(v.speed, 1) + ' km/h · ' + fmt(v.dir, 0) + '° · '
+        + fmt(v.lat, 4) + ', ' + fmt(v.lon, 4);
+    li.onclick = () => {
+      select(id);
+      const m = vehicles.get(id).marker;
+      map.panTo(m.getLatLng());
+      m.openPopup();
+    };
+    ul.appendChild(li);
+  }
+  document.getElementById('count').textContent = ids.length;
+  document.getElementById('empty').style.display = ids.length ? 'none' : 'block';
+}
+
+function select(id) { selectedId = id; renderList(); }
+
+function setStatus(text, isError) {
+  const el = document.getElementById('status');
+  el.textContent = text;
+  el.className = isError ? 'error' : '';
+}
+
+// ---- 2. Fahrzeuge laden + 5. Fehlerbehandlung, danach erneut versuchen (Polling) ----
+let firstLoad = true;
+async function poll() {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
+  try {
+    const response = await fetch(API_URL, { signal: controller.signal, cache: 'no-store',
+                                            headers: { 'Accept': 'application/json' } });
+    if (!response.ok) throw new Error('Der Server meldet einen Fehler (HTTP ' + response.status + ')');
+    const list = await response.json();
+    if (!Array.isArray(list)) throw new Error('Unerwartete Antwort des Servers');
+    updateMarkers(list);
+    if (firstLoad && vehicles.size > 0) {
+      map.fitBounds(L.featureGroup([...vehicles.values()].map(e => e.marker)).getBounds().pad(0.2),
+                    { maxZoom: 15 });
+      firstLoad = false;
+    }
+    setStatus(vehicles.size + ' Fahrzeug(e) · zuletzt aktualisiert ' + new Date().toLocaleTimeString('de-DE'), false);
+  } catch (e) {
+    const reason = e.name === 'AbortError' || e instanceof TypeError ? 'Server nicht erreichbar' : e.message;
+    setStatus(reason + ' – neuer Versuch in ' + INTERVAL_MS / 1000 + ' s', true);
+  } finally {
+    clearTimeout(timer);
+    setTimeout(poll, INTERVAL_MS);
+  }
+}
+
+poll();
+</script>
+</body>
+</html>

@@ -1,0 +1,55 @@
+syntax = "proto3";
+package dhbw.trasima.grpc;
+
+option java_multiple_files = true;
+option java_package = "dhbw.trasima.grpc.api";
+
+// Zustand eines Virtual Vehicle (V2)
+message VehicleData {
+    string id = 1;
+    double latitude = 2;   // Breite in Grad
+    double longitude = 3;  // Laenge in Grad
+    double speed = 4;      // km/h
+    double direction = 5;  // Grad, Norden = 0, Osten = 90
+    int64 timestamp = 6;   // Millisekunden seit 1970
+}
+
+message VehicleId {
+    string id = 1;
+}
+
+message NearbyRequest {
+    double latitude = 1;
+    double longitude = 2;
+    double radius_km = 3;
+}
+
+message Empty {
+}
+
+message Ack {
+    bool ok = 1;
+}
+
+message VehicleReply {
+    bool found = 1;
+    VehicleData vehicle = 2;
+}
+
+message VehicleList {
+    repeated VehicleData vehicles = 1;
+}
+
+// Das TRASIMA-Informationssystem: Key-Value-Store fuer Fahrzeugdaten
+service TrasimaService {
+    // Ein V2 meldet Position und Geschwindigkeit (anlegen oder ueberschreiben)
+    rpc publishPosition(VehicleData) returns (Ack);
+    // Daten eines Fahrzeugs abfragen
+    rpc getVehicle(VehicleId) returns (VehicleReply);
+    // Alle bekannten Fahrzeuge
+    rpc getAllVehicles(Empty) returns (VehicleList);
+    // Alle Fahrzeuge im Umkreis eines Punktes
+    rpc getNearbyVehicles(NearbyRequest) returns (VehicleList);
+    // Fahrzeug entfernen; ok = false, wenn es unbekannt war
+    rpc removeVehicle(VehicleId) returns (Ack);
+}
